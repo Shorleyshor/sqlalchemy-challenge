@@ -1,4 +1,5 @@
 from optparse import Values
+from unicodedata import name
 import numpy as np
 import datetime as dt
 import sqlalchemy
@@ -12,7 +13,7 @@ from flask import Flask, jsonify
 #################################################
 # Database Setup
 #################################################
-engine = create_engine("sqlite:///Resources/hawaii.sqlite")
+engine = create_engine("sqlite:///activities/Resources/hawaii.sqlite")
 
 # reflect an existing database into a new model
 Base = automap_base()
@@ -50,7 +51,7 @@ def precipitation():
     session = Session(engine)
 
     #Query Measurement
-    values = (session.query(Measurement.date,Measurement.tobs)
+    values = (session.query(Measurement.date, Measurement.tobs)
         .order_by(Measurement.date))
     
 
@@ -58,8 +59,8 @@ def precipitation():
     precipitation_date_prcp = []
     for value in values:
         row = {}
-        row["date"] = values[0]
-        row["prcp"] = float(values[1])
+        row["date"] = value[0]
+        row["prcp"] = float(value[1])
         precipitation_date_prcp.append(row)
 
     return jsonify(precipitation_date_prcp)
@@ -87,9 +88,10 @@ def tobs():
     session = Session(engine)
 
     # Query station names and do a station count to get the most active
-    station_list = (session.query(Measurement.station, func.count(Measurement.station)
+    station_list = (session.query(Measurement.station, func.count(Measurement.station))
         .group_by(Measurement.station)
-        .order_by(func.count(Measurement.station).desc)).all())
+        .order_by(func.count(Measurement.station).desc())
+        .all())
 
     most_active = station_list[0][0]
     print(most_active)
@@ -104,9 +106,9 @@ def tobs():
     tobs_values = []
     for value in values:
         row = {}
-        row["Station"] = values[0]
-        row["Date"] = values[1]
-        row["Temperature"] = int(values[2])
+        row["Station"] = value[0]
+        row["Date"] = value[1]
+        row["Temperature"] = int(value[2])
         tobs_values.append(row)
 
     return jsonify(tobs_values)
@@ -130,3 +132,54 @@ def star_only(start):
         tmin = values[0][0]
         tmax = values[0][1]
         tavg = '{0:.4}'.format(values[0][2])
+
+        values_output = (['Entered Start Date:' + start, 
+                                    'Lowest Temperature: ' + str(tmin) + 'F',
+                                    'Highest Temperature: ' + str(tmax) + 'F',
+                                    'Average Temperature: ' + str(tavg) + 'F'])
+
+        return jsonify(values_output)               
+    
+    return jsonify({"error": f"Input Date {start} not valid. Enter a valid date"}), 404
+
+
+#calculate the TMIN, TAVG, and TMAX for dates from the start date through the end date (inclusive).
+@app.route("/api/v1.0/<start>/<end>")
+def start_end(start, end):
+    # create a session link from Python to the database
+    session = Session(engine)
+
+    # check that start date is valid
+    valid_start_date = session.query(exists().where(Measurement.date == start)).scalar()
+
+    # check that start date is valid
+    valid_end_date = session.query(exists().where(Measurement.date == end)).scalar()
+
+    if valid_start_date and valid_end_date:
+
+        values = (session.query(func.min(Measurement.tobs),func.max(Measurement.tobs)
+                                    ,func.avg(Measurement.tobs))
+                                    .filter(Measurement.date >= start)
+                                    .filter(Measurement.date <= end).all())
+
+
+        tmin = values[0][0]
+        tmax = values[0][1]
+        tavg = '{0:.4}'.format(values[0][2])
+
+        values_output = (['Entered Start Date:' + start, 
+                                        'Entered End Date: ' + end,
+                                        'Lowest Temperature: ' + str(tmin) + 'F',
+                                        'Highest Temperature: ' + str(tmax) + 'F',
+                                        'Average Temperature: ' + str(tavg) + 'F'])
+
+        return jsonify(values_output)               
+        
+
+
+    if not valid_start_date and not valid_end_date:
+
+        return jsonify({"error": f"Input Start Date {start} and  End Date {end} not valid. Enter a valid date"}), 404
+
+if __name__ == '__main__':
+    app.run(debug=True)
